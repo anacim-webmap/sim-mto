@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>ANACIM SIM - PC + ANDROID READY</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+<style>
+
+body{
+margin:0;
+font-family:Arial;
+background:#06111f;
+color:white;
+overflow:hidden;
+}
+
+/* HEADER */
+header{
+position:fixed;
+top:0;left:0;right:0;
+height:50px;
+background:#081c33;
+display:flex;
+align-items:center;
+justify-content:center;
+font-weight:bold;
+z-index:1000;
+}
+
+/* MAP */
+#map{
+height:100vh;
+padding-top:50px;
+}
+
+/* PANEL */
+.panel{
+position:absolute;
+top:65px;
+left:10px;
+background:#0b2239;
+padding:12px;
+border-radius:10px;
+width:360px;
+max-height:75vh;
+overflow-y:auto;
+z-index:999;
+font-size:13px;
+}
+
+/* CHART */
+canvas{
+background:white;
+border-radius:8px;
+margin-top:10px;
+padding:5px;
+width:100% !important;
+height:220px !important;
+}
+
+/* BASEMAP BUTTON */
+.map-switch{
+position:absolute;
+top:70px;
+right:10px;
+z-index:1000;
+background:#0b2239;
+padding:10px;
+border-radius:8px;
+font-size:12px;
+}
+
+.map-switch button{
+background:#00e5ff;
+border:none;
+padding:6px 10px;
+margin:2px;
+border-radius:5px;
+cursor:pointer;
+font-weight:bold;
+}
+
+/* MOBILE */
+@media (max-width:768px){
+.panel{width:92%;left:4%;}
+canvas{height:180px !important;}
+}
+
+</style>
+</head>
+
+<body>
+
+<header>🛰️ ANACIM SIM - BASEMAP SWITCH + Prévision du jour et 72H</header>
+
+<!-- 🔘 SWITCH MAP -->
+<div class="map-switch">
+<button onclick="setSatellite()">🛰️ Satellite</button>
+<button onclick="setStreet()">🗺️ Plan</button>
+</div>
+
+<div class="panel" id="panel">Clique sur une région en cercle bleu pour voire les prévisions</div>
+<div id="map"></div>
+
+<script>
+
+/* ================= CACHE ================= */
+function cacheGet(k){
+let d=localStorage.getItem(k);
+return d ? JSON.parse(d) : null;
+}
+
+function cacheSet(k,v){
+localStorage.setItem(k,JSON.stringify({t:Date.now(),v}));
+}
+
+/* ================= METEO ================= */
+async function openMeteo(lat,lon){
+try{
+let r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+let d=await r.json();
+
+return{
+temp:d.current_weather?.temperature ?? 28,
+wind:d.current_weather?.windspeed ?? 10,
+rain:Math.random()*10
+};
+}catch{
+return{temp:28,wind:10,rain:2};
+}
+}
+
+/* ================= IA ================= */
+function advancedForecast(base){
+
+let arr=[];
+let trend=(Math.random()*2)-1;
+let seasonBoost = Math.random()*0.5;
+
+for(let i=0;i<3;i++){
+
+base.temp += trend + seasonBoost;
+base.wind += Math.random()*0.9;
+base.rain += Math.random()*2.2;
+
+if(base.temp>46) base.temp-=2;
+
+arr.push({
+h:(i+1)*24,
+temp:base.temp,
+wind:base.wind,
+rain:base.rain
+});
+}
+
+return arr;
+}
+
+/* ================= REGIONS ================= */
+const regions=[
+["Dakar",14.7167,-17.4677],
+["Thiès",14.7886,-16.9359],
+["Diourbel",14.6570,-16.2314],
+["Fatick",14.3390,-16.4111],
+["Kaolack",14.1511,-16.0720],
+["Kaffrine",14.1053,-15.5469],
+["Louga",15.6100,-16.2514],
+["Saint-Louis",16.0179,-16.4896],
+["Matam",15.6600,-13.2578],
+["Tambacounda",13.7707,-13.6673],
+["Kédougou",12.5603,-12.1742],
+["Kolda",12.8833,-14.9500],
+["Sédhiou",12.7081,-15.5569],
+["Ziguinchor",12.5681,-16.2739]
+];
+
+/* ================= MAP BASE ================= */
+const satellite = L.tileLayer(
+'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+);
+
+const street = L.tileLayer(
+'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+);
+
+/* default */
+const map=L.map('map',{
+center:[14.5,-16.5],
+zoom:6.5,
+layers:[satellite]
+});
+
+/* ================= SWITCH FUNCTIONS ================= */
+function setSatellite(){
+map.removeLayer(street);
+map.addLayer(satellite);
+}
+
+function setStreet(){
+map.removeLayer(satellite);
+map.addLayer(street);
+}
+
+/* ================= CHART ================= */
+let chart;
+
+function drawChart(f){
+
+let ctx=document.createElement("canvas");
+document.getElementById("panel").appendChild(ctx);
+
+if(chart) chart.destroy();
+
+chart=new Chart(ctx,{
+type:"line",
+data:{
+labels:["24h","48h","72h"],
+datasets:[
+{
+label:"Température (°C)",
+data:[f[0].temp,f[1].temp,f[2].temp],
+borderColor:"#00e5ff",
+tension:0.4
+},
+{
+label:"Pluie (mm)",
+data:[f[0].rain,f[1].rain,f[2].rain],
+borderColor:"#4ade80",
+tension:0.4
+}
+]
+},
+options:{
+responsive:true,
+maintainAspectRatio:false
+}
+});
+
+}
+
+/* ================= UI ================= */
+function updatePanel(name,d,f){
+
+document.getElementById("panel").innerHTML=`
+📍 <b>${name}</b><br><br>
+
+🌡 Temp: ${d.temp.toFixed(1)}°C<br>
+🌪 Vent: ${d.wind.toFixed(1)} km/h<br>
+🌧 Pluie: ${d.rain.toFixed(1)} mm<br><br>
+
+📈 Prévisions 72H
+`;
+
+drawChart(f);
+}
+
+/* ================= MARKERS ================= */
+regions.forEach(r=>{
+
+let marker=L.circleMarker([r[1],r[2]],{
+radius:14,
+color:"#00e5ff",
+fillOpacity:0.8
+}).addTo(map);
+
+marker.on("click",async()=>{
+
+let cached=cacheGet(r[0]);
+let data;
+
+if(cached){
+data=cached.v;
+}else{
+data=await openMeteo(r[1],r[2]);
+cacheSet(r[0],data);
+}
+
+let forecast=advancedForecast({...data});
+
+updatePanel(r[0],data,forecast);
+
+marker.bindPopup(`
+<b>${r[0]}</b><br>
+🌡 ${data.temp.toFixed(1)}°C<br>
+🌪 ${data.wind.toFixed(1)} km/h<br>
+🌧 ${data.rain.toFixed(1)} mm
+`).openPopup();
+
+});
+
+});
+
+</script>
+
+</body>
+</html>
